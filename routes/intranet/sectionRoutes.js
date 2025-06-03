@@ -3,6 +3,7 @@ const router = express.Router();
 const DocumentSection = require('../../models/Intranet/DocumentSection');
 const sanitize = require('mongo-sanitize'); // Install mongo-sanitize for sanitization
 
+
 router.get('/', async (req, res) => {
   try {
     const sections = await DocumentSection.find();

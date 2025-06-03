@@ -91,12 +91,16 @@ router.get('/', async (req, res) => {
   }
 });
 
+
+
 router.get('/download/:id', async (req, res) => {
   try {
     const document = await Document.findById(req.params.id);
     if (!document) {
       return res.status(404).json({ message: 'Document not found' });
     }
+
+    console.log(document.filePath)
     res.download(document.filePath, document.name);
   } catch (err) {
     res.status(500).json({ message: 'Server error while downloading document' });
