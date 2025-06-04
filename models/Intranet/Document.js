@@ -20,12 +20,12 @@ const documentSchema = new mongoose.Schema({
   },
   sectionId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'DocumentSection',
+    ref: 'Section',
     required: true
   },
   subsectionId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'DocumentSubsection',
+    ref: 'Subsection',
     required: true
   }
 }, { timestamps: true });

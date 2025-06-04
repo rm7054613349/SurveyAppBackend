@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const DocumentSubsection = require('../../models/Intranet/DocumentSubsection');
 
-
 router.get('/', async (req, res) => {
   try {
     const subsections = await DocumentSubsection.find().populate('sectionId');
