@@ -7,6 +7,8 @@ const User = require('../models/User');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+ADMIN_ACCESS_EMAIL=["mishrahardic@gmail.com"] 
+EMPLOYEE_ACCESS_EMAIL=["wwwritesh72660@gmail.com"]
 
 // Signup
 router.post('/signup', async (req, res) => {
@@ -23,8 +25,8 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
     // Check role from environment variables
-    const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
-    const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+    const allowedAdmins = JSON.parse(ADMIN_ACCESS_EMAIL || '[]');
+    const allowedEmployees = JSON.parse(EMPLOYEE_ACCESS_EMAIL || '[]');
     if (role === 'admin' && !allowedAdmins.includes(email)) {
       return res.status(403).json({ message: 'Not authorized to sign up as admin' });
     }
