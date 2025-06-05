@@ -7,6 +7,7 @@ const DocumentSection = require('../../models/Intranet/DocumentSection');
 const DocumentSubsection = require('../../models/Intranet/DocumentSubsection');
 const sanitize = require('mongo-sanitize');
 
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/');
@@ -91,16 +92,40 @@ router.get('/', async (req, res) => {
   }
 });
 
+
+
+// router.get('/download/:id', async (req, res) => {
+//   try {
+//     const document = await Document.findById(req.params.id);
+//     if (!document) {
+//       return res.status(404).json({ message: 'Document not found' });
+//     }
+//     res.download(document.filePath, document.name);
+//   } catch (err) {
+//     res.status(500).json({ message: 'Server error while downloading document' });
+//   }
+// });
+
+
+
 router.get('/download/:id', async (req, res) => {
   try {
     const document = await Document.findById(req.params.id);
     if (!document) {
       return res.status(404).json({ message: 'Document not found' });
     }
-    res.download(document.filePath, document.name);
+   
+    const filename = req.params.filename;
+  const filePath = path.join(__dirname, 'uploads', filename);
+
+    res.download(filePath,filename);
   } catch (err) {
     res.status(500).json({ message: 'Server error while downloading document' });
   }
 });
 
+
+
+
 module.exports = router;
+

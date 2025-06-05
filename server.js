@@ -42,6 +42,7 @@ app.use((req, res, next) => {
 // Configurable upload directory
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     if (!fs.existsSync(UPLOAD_DIR)) {
@@ -59,7 +60,19 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Middleware
-app.use(cors());
+// app.use(cors());
+
+
+
+app.use(cors({
+  origin: '*', // Allows all origins
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+
+
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
