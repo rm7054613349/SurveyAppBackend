@@ -6,9 +6,11 @@ const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-ADMIN_ACCESS_EMAIL=["mishrahardic@gmail.com"] 
-EMPLOYEE_ACCESS_EMAIL=["wwwritesh72660@gmail.com"]
+const client = new OAuth2Client(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  'postmessage'
+);
 
 // Signup
 router.post('/signup', async (req, res) => {
@@ -25,8 +27,8 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
     // Check role from environment variables
-    const allowedAdmins = JSON.parse(ADMIN_ACCESS_EMAIL || '[]');
-    const allowedEmployees = JSON.parse(EMPLOYEE_ACCESS_EMAIL || '[]');
+    const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
+    const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
     if (role === 'admin' && !allowedAdmins.includes(email)) {
       return res.status(403).json({ message: 'Not authorized to sign up as admin' });
     }
@@ -88,23 +90,79 @@ router.post('/login', async (req, res) => {
 });
 
 // Google Login
+// router.post('/google-login', async (req, res) => {
+//   const { credential } = req.body;
+//   try {
+//     if (!credential) {
+//       return res.status(400).json({ message: 'Google credential is required' });
+//     }
+//     const ticket = await client.verifyIdToken({
+//       idToken: credential,
+//       audience: process.env.GOOGLE_CLIENT_ID,
+//     });
+//     const payload = ticket.getPayload();
+//     const email = payload['email'];
+//     let user = await User.findOne({ email });
+//     if (!user) {
+//       return res.status(400).json({ message: 'User not found ' });
+//     }
+//     // Check role from environment variables
+//     const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
+//     const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+//     const emailRoleMapping = [
+//       ...allowedAdmins.map(email => ({ email, role: 'admin' })),
+//       ...allowedEmployees.map(email => ({ email, role: 'employee' })),
+//     ];
+//     const userMapping = emailRoleMapping.find(mapping => mapping.email === email);
+//     if (!userMapping || userMapping.role !== user.role) {
+//       return res.status(403).json({ message: 'User not authorized for this role' });
+//     }
+//     const token = jwt.sign(
+//       { id: user._id, role: user.role, email: user.email },
+//       process.env.JWT_SECRET,
+//       { expiresIn: '1d' }
+//     );
+//     res.json({ token, id: user._id, role: user.role, email: user.email });
+//   } catch (err) {
+//     console.error('Google login error:', err.message);
+//     res.status(500).json({ message: err.message || 'Google login failed' });
+//   }
+// });
+
+
+
+
 router.post('/google-login', async (req, res) => {
-  const { credential } = req.body;
+  const { code, credential } = req.body;
   try {
-    if (!credential) {
-      return res.status(400).json({ message: 'Google credential is required' });
+    let idToken;
+    if (code) {
+      // Redirect mode: Exchange auth code for tokens
+      const { tokens } = await client.getToken({
+        code,
+        redirect_uri: process.env.REDIRECT_URI || 'https://survey-app-frontend-amber.vercel.app/callback',
+      });
+      idToken = tokens.id_token;
+    } else if (credential) {
+      // Popup mode: Use provided ID token
+      idToken = credential;
+    } else {
+      return res.status(400).json({ message: 'Auth code or credential is required' });
     }
+
     const ticket = await client.verifyIdToken({
-      idToken: credential,
+      idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
-    const email = payload['email'];
+    console.log('Token audience:', payload.aud);
+    const email = payload.email;
+
     let user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ message: 'User not found ' });
+      return res.status(400).json({ message: 'User not found in database' });
     }
-    // Check role from environment variables
+
     const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
     const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
     const emailRoleMapping = [
@@ -115,17 +173,28 @@ router.post('/google-login', async (req, res) => {
     if (!userMapping || userMapping.role !== user.role) {
       return res.status(403).json({ message: 'User not authorized for this role' });
     }
+
     const token = jwt.sign(
       { id: user._id, role: user.role, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
-    res.json({ token, id: user._id, role: user.role, email: user.email });
+
+    return res.json({
+      token,
+      id: user._id,
+      role: user.role,
+      email: user.email,
+      credential: idToken,
+    });
   } catch (err) {
-    console.error('Google login error:', err.message);
-    res.status(500).json({ message: err.message || 'Google login failed' });
+    console.error('Google login error:', err.message, { stack: err.stack });
+    return res.status(500).json({ message: 'Google login failed: ' + err.message });
   }
 });
+
+
+
 
 // Get all users (Admin only)
 router.get('/users', authMiddleware, roleMiddleware('admin'), async (req, res) => {
