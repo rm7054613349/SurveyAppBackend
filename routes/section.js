@@ -3,6 +3,7 @@ const router = express.Router();
 const Section = require('../models/Section');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
 
+
 // Get all sections
 router.get('/', authMiddleware, async (req, res) => {
   try {

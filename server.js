@@ -17,6 +17,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
+const passport = require('./routes/passport');
 
 
 dotenv.config();
@@ -42,7 +43,6 @@ app.use((req, res, next) => {
 // Configurable upload directory
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
-
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     if (!fs.existsSync(UPLOAD_DIR)) {
@@ -57,23 +57,16 @@ const storage = multer.diskStorage({
   },
 });
 
+
+
+
 const upload = multer({ storage });
 
 // Middleware
-// app.use(cors());
-
-
-
-app.use(cors({
-  origin: '*', // Allows all origins
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-
-
-
+app.use(cors('*'));
 app.use(express.json());
+app.use(passport.initialize());
+
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/uploads', express.static('uploads'));

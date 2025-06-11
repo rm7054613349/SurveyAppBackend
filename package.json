@@ -6,6 +6,7 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "@node-saml/passport-saml": "^5.0.1",
     "axios": "^1.9.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -18,6 +19,8 @@
     "multer": "^1.4.5-lts.2",
     "multer-gridfs-storage": "^5.0.2",
     "nodemailer": "^6.9.0",
+    "passport": "^0.7.0",
+    "passport-saml": "^3.2.4",
     "sanitize-mail": "^1.0.0"
   },
   "devDependencies": {

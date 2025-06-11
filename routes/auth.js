@@ -3,48 +3,11 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const passport = require('./passport');
 const User = require('../models/User');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-// Signup
-// router.post('/signup', async (req, res) => {
-//   const { email, password, role } = req.body;
-//   try {
-//     if (!email || !password || !role) {
-//       return res.status(400).json({ message: 'All fields are required' });
-//     }
-//     if (!['admin', 'employee'].includes(role)) {
-//       return res.status(400).json({ message: 'Invalid role' });
-//     }
-//     let user = await User.findOne({ email });
-//     if (user) {
-//       return res.status(400).json({ message: 'User already exists' });
-//     }
-//     // Check role from environment variables
-//     const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
-//     const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
-//     if (role === 'admin' && !allowedAdmins.includes(email)) {
-//       return res.status(403).json({ message: 'Not authorized to sign up as admin' });
-//     }
-//     if (role === 'employee' && !allowedEmployees.includes(email)) {
-//       return res.status(403).json({ message: 'Not authorized to sign up as employee' });
-//     }
-//     user = new User({ email, password, role });
-//     await user.save();
-//     const token = jwt.sign(
-//       { id: user._id, role: user.role, email: user.email },
-//       process.env.JWT_SECRET,
-//       { expiresIn: '1d' }
-//     );
-//     res.status(201).json({ token, id: user._id, role: user.role, email: user.email });
-//   } catch (err) {
-//     console.error('Signup error:', err.message);
-//     res.status(500).json({ message: err.message });
-//   }
-// });
-
 
 // Signup
 router.post('/signup', async (req, res) => {
@@ -60,6 +23,14 @@ router.post('/signup', async (req, res) => {
     if (user) {
       return res.status(400).json({ message: 'User already exists' });
     }
+    const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
+    const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+    if (role === 'admin' && !allowedAdmins.includes(email)) {
+      return res.status(403).json({ message: 'Not authorized to sign up as admin' });
+    }
+    if (role === 'employee' && !allowedEmployees.includes(email)) {
+      return res.status(403).json({ message: 'Not authorized to sign up as employee' });
+    }
     user = new User({ email, password, role });
     await user.save();
     const token = jwt.sign(
@@ -69,10 +40,10 @@ router.post('/signup', async (req, res) => {
     );
     res.status(201).json({ token, id: user._id, role: user.role, email: user.email });
   } catch (err) {
+    console.error('Signup error:', err.message);
     res.status(500).json({ message: err.message });
   }
 });
-
 
 
 // Login
@@ -90,7 +61,6 @@ router.post('/login', async (req, res) => {
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
-    // Check role from environment variables
     const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
     const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
     const emailRoleMapping = [
@@ -113,6 +83,8 @@ router.post('/login', async (req, res) => {
   }
 });
 
+
+
 // Google Login
 router.post('/google-login', async (req, res) => {
   const { credential } = req.body;
@@ -128,9 +100,8 @@ router.post('/google-login', async (req, res) => {
     const email = payload['email'];
     let user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ message: 'User not found ' });
+      return res.status(400).json({ message: 'User not found' });
     }
-    // Check role from environment variables
     const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
     const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
     const emailRoleMapping = [
@@ -150,6 +121,51 @@ router.post('/google-login', async (req, res) => {
   } catch (err) {
     console.error('Google login error:', err.message);
     res.status(500).json({ message: err.message || 'Google login failed' });
+  }
+});
+
+
+// GreytHR SSO
+router.get('/greythr-sso', passport.authenticate('saml', {
+  failureRedirect: '/',
+  failureFlash: true,
+}));
+
+
+
+
+router.post('/greythr-sso/callback', passport.authenticate('saml', {
+  failureRedirect: '/',
+  failureFlash: true,
+}), async (req, res) => {
+  try {
+    const { email, role } = req.user;
+    const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
+    const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+    const emailRoleMapping = [
+      ...allowedAdmins.map(email => ({ email, role: 'admin' })),
+      ...allowedEmployees.map(email => ({ email, role: 'employee' })),
+    ];
+    const userMapping = emailRoleMapping.find(mapping => mapping.email === email);
+    if (!userMapping) {
+      return res.status(403).json({ message: 'Email not authorized' });
+    }
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = new User({ email, role: userMapping.role });
+      await user.save();
+    } else if (user.role !== userMapping.role) {
+      return res.status(403).json({ message: 'User not authorized for this role' });
+    }
+    const token = jwt.sign(
+      { id: user._id, role: user.role, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+    res.redirect(`${process.env.APP_BASE_URL}/sso-callback?token=${token}&role=${user.role}&email=${user.email}&id=${user._id}`);
+  } catch (err) {
+    console.error('GreytHR SSO Callback Error:', err.message);
+    res.redirect(`${process.env.APP_BASE_URL}?error=${encodeURIComponent(err.message || 'GreytHR SSO failed')}`);
   }
 });
 
@@ -195,9 +211,6 @@ router.post('/change-password', authMiddleware, async (req, res) => {
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
     res.json({
       id: user._id,
       email: user.email,
