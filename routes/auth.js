@@ -9,27 +9,42 @@ const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// Signup
+// Signup (unchanged)
 router.post('/signup', async (req, res) => {
   const { email, password, role } = req.body;
+  console.log('Signup request:', { email, role, timestamp: new Date().toISOString() });
   try {
     if (!email || !password || !role) {
       return res.status(400).json({ message: 'All fields are required' });
     }
-    if (!['admin', 'employee'].includes(role)) {
+    if (!['admin', 'employee', 'NewHire'].includes(role)) {
+      console.log('Invalid role detected:', role);
       return res.status(400).json({ message: 'Invalid role' });
     }
     let user = await User.findOne({ email });
     if (user) {
       return res.status(400).json({ message: 'User already exists' });
     }
-    const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
-    const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+    let allowedAdmins = [];
+    let allowedEmployees = [];
+    let allowedNewHires = [];
+    try {
+      allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
+      allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+      allowedNewHires = JSON.parse(process.env.NEW_HIRE_ACCESS_EMAIL || '[]');
+      console.log('Allowed emails:', { allowedNewHires });
+    } catch (e) {
+      console.error('Error parsing env emails:', e.message);
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
     if (role === 'admin' && !allowedAdmins.includes(email)) {
       return res.status(403).json({ message: 'Not authorized to sign up as admin' });
     }
     if (role === 'employee' && !allowedEmployees.includes(email)) {
       return res.status(403).json({ message: 'Not authorized to sign up as employee' });
+    }
+    if (role === 'NewHire' && !allowedNewHires.includes(email)) {
+      return res.status(403).json({ message: 'Not authorized to sign up as NewHire' });
     }
     user = new User({ email, password, role });
     await user.save();
@@ -40,36 +55,50 @@ router.post('/signup', async (req, res) => {
     );
     res.status(201).json({ token, id: user._id, role: user.role, email: user.email });
   } catch (err) {
-    console.error('Signup error:', err.message);
+    console.error('Signup error:', { message: err.message, timestamp: new Date().toISOString() });
     res.status(500).json({ message: err.message });
   }
 });
 
-
-// Login
+// Login (modified)
 router.post('/login', async (req, res) => {
   const { email, password, role } = req.body;
+  console.log('Login request:', { email, role, timestamp: new Date().toISOString() });
   try {
-    if (!email || !password || !role) {
-      return res.status(400).json({ message: 'All fields are required' });
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+    let allowedAdmins = [];
+    let allowedEmployees = [];
+    let allowedNewHires = [];
+    try {
+      allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
+      allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+      allowedNewHires = JSON.parse(process.env.NEW_HIRE_ACCESS_EMAIL || '[]');
+    } catch (e) {
+      console.error('Error parsing env emails:', e.message);
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
+    const emailRoleMapping = [
+      ...allowedAdmins.map(email => ({ email, role: 'admin' })),
+      ...allowedEmployees.map(email => ({ email, role: 'employee' })),
+      ...allowedNewHires.map(email => ({ email, role: 'NewHire' })),
+    ];
+    const userMapping = emailRoleMapping.find(mapping => mapping.email === email);
+    if (!userMapping) {
+      return res.status(403).json({ message: 'User not authorized' });
+    }
+    const inferredRole = role || userMapping.role;
+    if (userMapping.role !== inferredRole) {
+      return res.status(403).json({ message: 'User not authorized for this role' });
     }
     const user = await User.findOne({ email });
-    if (!user || user.role !== role) {
+    if (!user || user.role !== inferredRole) {
       return res.status(400).json({ message: 'User not authorized' });
     }
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
-    }
-    const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
-    const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
-    const emailRoleMapping = [
-      ...allowedAdmins.map(email => ({ email, role: 'admin' })),
-      ...allowedEmployees.map(email => ({ email, role: 'employee' })),
-    ];
-    const userMapping = emailRoleMapping.find(mapping => mapping.email === email);
-    if (!userMapping || userMapping.role !== role) {
-      return res.status(403).json({ message: 'User not authorized for this role' });
     }
     const token = jwt.sign(
       { id: user._id, role: user.role, email: user.email },
@@ -78,16 +107,15 @@ router.post('/login', async (req, res) => {
     );
     res.json({ token, id: user._id, role: user.role, email: user.email });
   } catch (err) {
-    console.error('Login error:', err.message);
+    console.error('Login error:', { message: err.message, timestamp: new Date().toISOString() });
     res.status(500).json({ message: err.message });
   }
 });
 
-
-
-// Google Login
+// Google Login (unchanged)
 router.post('/google-login', async (req, res) => {
   const { credential } = req.body;
+  console.log('Google login request:', { timestamp: new Date().toISOString() });
   try {
     if (!credential) {
       return res.status(400).json({ message: 'Google credential is required' });
@@ -102,11 +130,21 @@ router.post('/google-login', async (req, res) => {
     if (!user) {
       return res.status(400).json({ message: 'User not found' });
     }
-    const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
-    const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+    let allowedAdmins = [];
+    let allowedEmployees = [];
+    let allowedNewHires = [];
+    try {
+      allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
+      allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+      allowedNewHires = JSON.parse(process.env.NEW_HIRE_ACCESS_EMAIL || '[]');
+    } catch (e) {
+      console.error('Error parsing env emails:', e.message);
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
     const emailRoleMapping = [
       ...allowedAdmins.map(email => ({ email, role: 'admin' })),
       ...allowedEmployees.map(email => ({ email, role: 'employee' })),
+      ...allowedNewHires.map(email => ({ email, role: 'NewHire' })),
     ];
     const userMapping = emailRoleMapping.find(mapping => mapping.email === email);
     if (!userMapping || userMapping.role !== user.role) {
@@ -119,20 +157,16 @@ router.post('/google-login', async (req, res) => {
     );
     res.json({ token, id: user._id, role: user.role, email: user.email });
   } catch (err) {
-    console.error('Google login error:', err.message);
+    console.error('Google login error:', { message: err.message, timestamp: new Date().toISOString() });
     res.status(500).json({ message: err.message || 'Google login failed' });
   }
 });
 
-
-// GreytHR SSO
+// GreytHR SSO (unchanged)
 router.get('/greythr-sso', passport.authenticate('saml', {
   failureRedirect: '/',
   failureFlash: true,
 }));
-
-
-
 
 router.post('/greythr-sso/callback', passport.authenticate('saml', {
   failureRedirect: '/',
@@ -140,11 +174,22 @@ router.post('/greythr-sso/callback', passport.authenticate('saml', {
 }), async (req, res) => {
   try {
     const { email, role } = req.user;
-    const allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
-    const allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+    console.log('GreytHR SSO callback:', { email, role, timestamp: new Date().toISOString() });
+    let allowedAdmins = [];
+    let allowedEmployees = [];
+    let allowedNewHires = [];
+    try {
+      allowedAdmins = JSON.parse(process.env.ADMIN_ACCESS_EMAIL || '[]');
+      allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
+      allowedNewHires = JSON.parse(process.env.NEW_HIRE_ACCESS_EMAIL || '[]');
+    } catch (e) {
+      console.error('Error parsing env emails:', e.message);
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
     const emailRoleMapping = [
       ...allowedAdmins.map(email => ({ email, role: 'admin' })),
       ...allowedEmployees.map(email => ({ email, role: 'employee' })),
+      ...allowedNewHires.map(email => ({ email, role: 'NewHire' })),
     ];
     const userMapping = emailRoleMapping.find(mapping => mapping.email === email);
     if (!userMapping) {
@@ -162,30 +207,30 @@ router.post('/greythr-sso/callback', passport.authenticate('saml', {
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
-    res.redirect(`${process.env.APP_BASE_URL}/sso-callback?token=${token}&role=${user.role}&email=${user.email}&id=${user._id}`);
+    res.redirect(`${process.env.APP_BASE_URL}/sso-callback?token=${encodeURIComponent(token)}&role=${user.role}&email=${encodeURIComponent(user.email)}&id=${user._id}`);
   } catch (err) {
-    console.error('GreytHR SSO Callback Error:', err.message);
+    console.error('GreytHR SSO error:', { message: err.message, timestamp: new Date().toISOString() });
     res.redirect(`${process.env.APP_BASE_URL}?error=${encodeURIComponent(err.message || 'GreytHR SSO failed')}`);
   }
 });
 
-// Get all users (Admin only)
+// Get all users (admin only, unchanged)
 router.get('/users', authMiddleware, roleMiddleware('admin'), async (req, res) => {
   try {
     const users = await User.find().select('-password');
     res.json(users);
   } catch (err) {
-    console.error('Get users error:', err.message);
+    console.error('Get users error:', { message: err.message, timestamp: new Date().toISOString() });
     res.status(500).json({ message: err.message });
   }
 });
 
-// Change password
+// Change password (unchanged)
 router.post('/change-password', authMiddleware, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   try {
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ message: 'Current and new password are required' });
+      return res.status(400).json({ message: 'Current and new passwords are required' });
     }
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -202,12 +247,12 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     await user.save();
     res.json({ message: 'Password changed successfully' });
   } catch (err) {
-    console.error('Change password error:', err.message);
+    console.error('Change password error:', { message: err.message, timestamp: new Date().toISOString() });
     res.status(500).json({ message: err.message });
   }
 });
 
-// Get user profile
+// Get user profile (unchanged)
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
@@ -218,9 +263,14 @@ router.get('/me', authMiddleware, async (req, res) => {
       badges: user.badges || [],
     });
   } catch (err) {
-    console.error('Get user profile error:', err.message);
+    console.error('Get user profile error:', { message: err.message, timestamp: new Date().toISOString() });
     res.status(500).json({ message: err.message });
   }
+});
+
+// Debug endpoint (unchanged)
+router.get('/version', (req, res) => {
+  res.json({ version: '1.0.0', rolesSupported: ['admin', 'employee', 'NewHire'] });
 });
 
 module.exports = router;

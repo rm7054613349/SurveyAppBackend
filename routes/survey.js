@@ -18,6 +18,7 @@ if (!fs.existsSync(uploadDir)) {
   console.log('Created Uploads directory:', uploadDir);
 }
 
+
 // Get all surveys
 router.get('/', authMiddleware, async (req, res) => {
   try {
