@@ -33,6 +33,7 @@ router.post('/signup', async (req, res) => {
       allowedEmployees = JSON.parse(process.env.EMPLOYEE_ACCESS_EMAIL || '[]');
       allowedNewHires = JSON.parse(process.env.NEW_HIRE_ACCESS_EMAIL || '[]');
       console.log('Allowed emails:', { allowedNewHires });
+        console.log('Allowed emails:', { allowedEmployees });
     } catch (e) {
       console.error('Error parsing env emails:', e.message);
       return res.status(500).json({ message: 'Server configuration error' });
